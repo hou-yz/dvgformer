@@ -219,8 +219,7 @@ class DVGFormerModel(PreTrainedModel):
         self.cross_frame_pe = nn.Embedding(
             config.max_model_frames // config.fps_downsample,
             config.hidden_size // 2)
-        self.prepend_pe = nn.Parameter(torch.randn(
-            config.n_token_prepend, config.hidden_size))
+        self.prepend_pe = nn.Parameter(torch.randn(3, config.hidden_size))
 
         self.motion_option = config.motion_option
 
