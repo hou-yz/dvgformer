@@ -1,7 +1,7 @@
 # DVGFormer: Learning Camera Movement Control from Real-World Drone Videos
 
 
-<a href=""><img src="https://img.shields.io/badge/Paper-arXiv-red?style=for-the-badge" height=22.5></a>
+<a href="https://arxiv.org/abs/2412.09620"><img src="https://img.shields.io/badge/Paper-arXiv-red?style=for-the-badge" height=22.5></a>
 <a href="https://dvgformer.github.io/"><img src="https://img.shields.io/badge/Project-Page-blue?style=for-the-badge" height=22.5></a>
 <!-- <a href="https://huggingface.co/SPO-Diffusion-Models"><img src="https://img.shields.io/badge/Hugging-Face-yellow?style=for-the-badge" height=22.5></a> -->
 
