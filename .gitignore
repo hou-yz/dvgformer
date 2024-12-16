@@ -6,8 +6,6 @@ demo*
 wandb/
 logs/
 .vscode/
-*.png
-*.jpg
 
 # Byte-compiled / optimized / DLL files
 __pycache__/
