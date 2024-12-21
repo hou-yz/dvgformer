@@ -920,10 +920,7 @@ def main():
                             num_workers=0)
 
     device = 'cuda'
-    model = DVGFormerModel(config).to(device)
-    # model.to(torch.bfloat16)
-    # model = DVGFormerModel.from_pretrained(
-    #     'logs/DEBUG_fpv-3fps-150frames-l12h6-n1img45boa1s1aID1-motionL-depth2d-lossa1-F-resonnt-humanist').cuda() #.bfloat16()
+    model = DVGFormerModel(config).to(device).to(torch.bfloat16)
     model.eval()
 
     def count_parameters(model):

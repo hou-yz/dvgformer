@@ -68,9 +68,9 @@ Coming soon!
     │   ...
     │   └── snowy_mountain/
     ├── blosm/
-    │   ├── himeji
+    │   ├── himeji/
     │   ...
-    │   └── sydney
+    │   └── sydney/
     ├── src/
     ├── README.md
     ...
@@ -84,8 +84,8 @@ Coming soon!
     ```
     dvgformer/
     ├── youtube_drone_videos/
-    │   ├── dataset_full.h5/
-    │   └── dataset_mini.h5/
+    │   ├── dataset_full.h5
+    │   └── dataset_mini.h5
     ├── src/
     ├── README.md
     ...

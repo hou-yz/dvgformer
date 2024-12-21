@@ -145,7 +145,20 @@ def main(args):
     )
 
     trainer.train()
-    trainer.save_model()
+
+    # Get the model's state_dict
+    state_dict = model.state_dict()
+    # Remove keys related to pre-trained components
+    keys_to_remove = [key for key in state_dict.keys()
+                      if key.startswith("embed_img.backbone") or
+                      key.startswith("embed_img.depth_model") or
+                      key.startswith("transformer.wpe")
+                      ]
+    for key in keys_to_remove:
+        del state_dict[key]
+    model.save_pretrained(logdir, state_dict=state_dict)
+    config.save_pretrained(logdir)
+
     del trainer
     print(logdir)
 

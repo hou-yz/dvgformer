@@ -754,10 +754,6 @@ def main():
                            run_dir='debug/videos',
                            #    resolution=(180, 180), cropped_sensor_width=36/16*9
                            )
-
-    env.load('logs/fpv-3fps-150frames-l12h6-n1s1img45boa1aID1-motionL-depth2d-lossa1-FC-edible-url/videos/fpv_arctic_42459a31_return-3.67_crashFront_3_2024-12-03_17-24-23_config.txt')
-    # env.final_render('debug', mode='low', save_mp4=True)
-    env.final_render('debug')
     return
 
     # Example of using the environment
