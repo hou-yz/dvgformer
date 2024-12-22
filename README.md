@@ -93,7 +93,7 @@ Please refer to huggingface for checkpoint download [link](https://huggingface.c
     ```
 
     Due to the YouTube policy, we cannot share the video MP4s or the frames. As an alternative, we include a python script `download_videos.py` that can help you automatically download the videos and extract the frames. 
-    ```python
+    ```sh
     python download_videos.py --hdf5_fpath youtube_drone_videos/dataset_mini.h5
     python download_videos.py --hdf5_fpath youtube_drone_videos/dataset_full.h5
     ```
