@@ -3,7 +3,7 @@
 
 <!-- <a href="https://arxiv.org/abs/2412.09620"><img src="https://img.shields.io/badge/Paper-arXiv-red?style=for-the-badge" height=22.5></a>
 <a href="https://dvgformer.github.io/"><img src="https://img.shields.io/badge/Project-Page-blue?style=for-the-badge" height=22.5></a> -->
-[**Paper**](https://arxiv.org/abs/2412.09620) | [**Project Page**](https://dvgformer.github.io/) | [**Data**](youtube_drone_videos/README.md) 
+[**Paper**](https://arxiv.org/abs/2412.09620) | [**Project Page**](https://dvgformer.github.io/) | [**Github**](https://github.com/hou-yz/dvgformer) | [**Data**](https://huggingface.co/datasets/yunzhong-hou/DroneMotion-99k)
 
 Official implementation of our paper: 
 <br>**Learning Camera Movement Control from Real-World Drone Videos**<br>
@@ -28,9 +28,10 @@ To predict camera motion *a<sub>t</sub>* for time step *t*, the auto-regressive 
 
 ## Project Updates
 
-- 🔥🔥 News: ```2024/12/13```: We have released the [DroneMotion-99k dataset](youtube_drone_videos/README.md). Check out the README file for the steps needed after downloading the HDF5 archieve. 
-- 🔥🔥 News: ```2024/12/13```: We have released the the [code](https://github.com/hou-yz/dvgformer) for the DVGFormer!
-- 🔥🔥 News: ```2024/12/13```: Our [paper](https://arxiv.org/abs/2412.09620) is now online!
+- 🔥🔥 News: ```2024/12/22```: We have released model [checkpoints](https://huggingface.co/yunzhong-hou/DVGFormer) and [dataset](https://huggingface.co/datasets/yunzhong-hou/DroneMotion-99k) on huggingface.
+- 🔥 News: ```2024/12/13```: We have released the [DroneMotion-99k dataset](youtube_drone_videos/README.md). Check out the README file for the steps needed after downloading the HDF5 archieve. 
+- 🔥 News: ```2024/12/13```: We have released the the [code](https://github.com/hou-yz/dvgformer) for the DVGFormer!
+- 🔥 News: ```2024/12/13```: Our [paper](https://arxiv.org/abs/2412.09620) is now online!
 
 ## Todo List
 - [x] Initialize repo
@@ -39,10 +40,10 @@ To predict camera motion *a<sub>t</sub>* for time step *t*, the auto-regressive 
 - [x] DroneMotion-99k dataset
     - [x] HDF5 archieve of filtered 3D camera trajectories
     - [x] scripts for downloading the corresponding YouTube videos
-- [ ] Release model checkpoints
+- [x] Release model checkpoints
 
 ## Model Checkpoint
-Coming soon!
+Please refer to huggingface for checkpoint download [link](https://huggingface.co/yunzhong-hou/DVGFormer).
 
 ## Installation
 1. **Create and activate a Conda environment**:
@@ -103,7 +104,17 @@ Coming soon!
 
 ## Running DVGFormer Model
 1. **Inference**:
-    You can download the model checkpoint from this [link (coming soon)]().
+    You can download the model checkpoint from [huggingface](https://huggingface.co/yunzhong-hou/DVGFormer). You can also directly load the pretrained model from this code
+    ```python
+    import torch
+    from src.models import DVGFormerModel
+
+    model = DVGFormerModel.from_pretrained(
+        'yunzhong-hou/DVGFormer'
+        ).to('cuda').to(torch.bfloat16)
+    ```
+
+    For blender evaluation, you can run the following script.
     ```sh
     python blender_eval.py 
     ```
@@ -116,7 +127,7 @@ Coming soon!
 
 
 ## Citation
-Please cite our paper:
+If you find this project useful, please consider citing:
 ```
 @article{hou2024dvgformer,
   author    = {Hou, Yunzhong and Zheng, Liang and Torr, Philip},

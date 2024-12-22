@@ -276,11 +276,12 @@ if __name__ == '__main__':
     parser = argparse.ArgumentParser(
         description='Blender evaluation')
     # data settings
-    parser.add_argument('--logdir', type=str, required=True)
+    parser.add_argument('--logdir', type=str, default=None)
     args = parser.parse_args()
 
     model = DVGFormerModel.from_pretrained(
-        args.logdir, ignore_mismatched_sizes=True).cuda().bfloat16()
+        'yunzhong-hou/DVGFormer' if args.logdir is None else args.logdir,
+        ignore_mismatched_sizes=True).cuda().bfloat16()
 
     blender_simulation(model.config, model, args.logdir,
                        num_runs=50, video_duration=10)

@@ -920,7 +920,7 @@ def main():
                             num_workers=0)
 
     device = 'cuda'
-    model = DVGFormerModel(config).to(device).to(torch.bfloat16)
+    model = DVGFormerModel.from_pretrained('yunzhong-hou/DVGFormer').to(device).to(torch.bfloat16)
     model.eval()
 
     def count_parameters(model):
