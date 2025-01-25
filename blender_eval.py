@@ -19,7 +19,7 @@ infinigen_root = 'infinigen'
 blosm_root = 'blosm'
 
 
-def expand_episode(env, config, model, run_name, drone_type=1, seed=None, random_init_pose=False, re_render=True):
+def expand_episode(env, config, model, run_name, drone_type=1, seed=None, random_init_pose=False, re_render=True, force_actions=None):
 
     # Reset environment
     env.drone_type = drone_type
@@ -82,9 +82,15 @@ def expand_episode(env, config, model, run_name, drone_type=1, seed=None, random
             [batch['images'], img.cuda()], dim=1)
         batch['states'] = torch.cat(
             [batch['states'], states[None, None].cuda()], dim=1)
+
+        gt_forcing = force_actions is not None and t < force_actions.shape[0]
+        if gt_forcing:
+            next_actions = force_actions.cuda()[None, [t]].repeat(b, 1, 1, 1)
+        else:
+            next_actions = (torch.ones([b, l, model.n_action_to_predict, model.config.action_dim]).cuda() *
+                            model.config.ignore_value)
         batch['actions'] = torch.cat(
-            [batch['actions'], (torch.ones([b, l, model.n_action_to_predict, model.config.action_dim]).cuda() *
-                                model.config.ignore_value)], dim=1)
+            [batch['actions'], next_actions], dim=1)
         # length for the sequence, set to 1
         batch['seq_length'] = torch.ones(
             b, dtype=torch.long).cuda() * (t + 1)
@@ -102,7 +108,8 @@ def expand_episode(env, config, model, run_name, drone_type=1, seed=None, random
         batch_pt['past_key_values'] = batch['past_key_values']
         # Get action from policy network
         with torch.no_grad():
-            outputs = model.expand_actions(**batch_pt)
+            outputs = model.expand_actions(
+                **batch_pt, gt_forcing=gt_forcing)
         batch['past_key_values'] = outputs.past_key_values
         batch['actions'][:, -1] = outputs.action_preds
 
@@ -190,7 +197,7 @@ def expand_episode(env, config, model, run_name, drone_type=1, seed=None, random
     return total_reward, crash, seq_len
 
 
-def blender_simulation(config, model, logdir, num_runs=40, video_duration=10, re_render=True):
+def blender_simulation(config, model, logdir, num_runs=40, video_duration=10, re_render=True, force_actions=None):
     # generated scenes
     infinigen_fpaths = {}
     for scene in sorted(os.listdir(infinigen_root)):
@@ -243,7 +250,7 @@ def blender_simulation(config, model, logdir, num_runs=40, video_duration=10, re
                     config.drone_types) > 1 else config.drone_types[0]
                 total_reward, crash, seq_len = expand_episode(
                     env, config, model, run_name=run_name, drone_type=drone_type, seed=seed,
-                    random_init_pose=(j > 0), re_render=re_render)
+                    random_init_pose=(j > 0), re_render=re_render, force_actions=force_actions)
                 results.append({'render_fpath': scene_fpath,
                                 'seed': seed,
                                 'total_reward': total_reward,
@@ -283,5 +290,15 @@ if __name__ == '__main__':
         'yunzhong-hou/DVGFormer' if args.logdir is None else args.logdir,
         ignore_mismatched_sizes=True).cuda().bfloat16()
 
+    from src.data.drone_path_seq_dataset import DronePathSequenceDataset
+    dataset = DronePathSequenceDataset('youtube_drone_videos',
+                                       'dataset_mini.h5',
+                                       motion_option=model.config.motion_option,
+                                       )
+    print(len(dataset))
+    data = dataset.__getitem__(0, visualize=True)
+
     blender_simulation(model.config, model, args.logdir,
-                       num_runs=50, video_duration=10)
+                       num_runs=50, video_duration=10,
+                       #   force_actions=data['actions']
+                       )

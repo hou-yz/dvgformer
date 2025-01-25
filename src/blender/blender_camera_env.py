@@ -740,7 +740,7 @@ def main():
     from src.utils.flexible_fs import FlexibleFileSystem
     from src.utils.quaternion_operations import add_angular_velocity_to_quaternion
 
-    motion_option = 'global'
+    motion_option = 'local'
     fps = 3
     original_fps = 15
     fps_downsample = original_fps // fps
@@ -748,13 +748,13 @@ def main():
     action_downsample = original_fps // action_fps
     n_action_to_predict = fps_downsample // action_downsample
     # env
-    env = BlenderCameraEnv(scene_fpath='blosm/melbourne/scene.blend',
+    env = BlenderCameraEnv(scene_fpath='blosm/himeji/scene.blend',
                            action_fps=action_fps,
                            motion_option=motion_option,
                            run_dir='debug/videos',
                            #    resolution=(180, 180), cropped_sensor_width=36/16*9
                            )
-    return
+    # return
 
     # Example of using the environment
     obs, info = env.reset(seed=0, random_init_pose=True)
@@ -768,7 +768,7 @@ def main():
         f'{root}/{filter_results_path}')
     for video_id in sorted(h5_fs.listdir(root)):
         for result_fname in sorted(h5_fs.listdir(f'{root}/{video_id}')):
-            if result_fname.endswith('.csv'):
+            if '-score' in result_fname and result_fname.endswith('.csv'):
                 score = int(re.search(r'-score(\d+)',
                                       result_fname).group(1))
                 valid = '_invalid' not in result_fname
@@ -777,7 +777,7 @@ def main():
                     result_fpaths.append(result_fpath)
 
     # data_index = np.random.randint(len(result_fpaths))
-    data_index = 18
+    data_index = 0
     print(data_index, result_fpaths[data_index])
     with h5_fs.open(result_fpaths[data_index], 'r') as f:
         recons_df = pd.read_csv(f, comment='#')

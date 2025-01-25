@@ -223,7 +223,7 @@ def main():
         f'{root}/{filter_results_path}')
     for video_id in sorted(h5_fs.listdir(root)):
         for result_fname in sorted(h5_fs.listdir(f'{root}/{video_id}')):
-            if result_fname.endswith('.csv'):
+            if 'score' in result_fname and result_fname.endswith('.csv'):
                 score = int(re.search(r'-score(\d+)',
                                       result_fname).group(1))
                 valid = '_invalid' not in result_fname

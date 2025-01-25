@@ -720,14 +720,10 @@ class DVGFormerModel(PreTrainedModel):
         seq_length: Optional[torch.LongTensor] = None,
         past_key_values: Optional[Tuple[Tuple[torch.Tensor]]] = None,
         attention_mask: Optional[torch.FloatTensor] = None,
+        gt_forcing: bool = False,
     ) -> DVGFormerOutput:
         '''
         Expand the actions for one (current) pair of image & state (for generation).
-        There are three modes for expanding the action based on config.test_gt_forcing:
-        1. 'allframe': use GT actions in each frame (15 fps) as conditions for expanding the actions. must be used when actions are provided.
-        2. 'keyframe': use GT state for key frames (3 fps) and PREDICTED actions (15 fps) as conditions for expanding the actions
-        3. 'none': same as above, but also excute the actions to get the future image & state
-                   (require support for interactive environment)
 
         Args:
             quality (torch.LongTensor): [batch_size]
@@ -772,11 +768,8 @@ class DVGFormerModel(PreTrainedModel):
             time_steps, images, states, actions, seq_length, attention_mask.to(
                 self.dtype), noise_embed, quality, drone_type, intrinsic, past_key_values)
         # remove the last several terms for prediction
-        if self.n_token_predict == 0:
-            end_idx = inputs_embeds.shape[1]
-            mask_end_idx = attention_mask.shape[1]
-        else:
-            end_idx = mask_end_idx = -self.n_token_predict
+        end_idx = inputs_embeds.shape[1] - self.n_token_predict
+        mask_end_idx = attention_mask.shape[1] - self.n_token_predict
         inputs_embeds = inputs_embeds[:, :end_idx]
 
         # from transformers.generation.utils import GenerationMixin
@@ -799,9 +792,6 @@ class DVGFormerModel(PreTrainedModel):
         next_states = torch.zeros([b, 1, self.n_action_to_predict, self.config.state_dim],
                                   device=device, dtype=self.dtype)
         pred_steps = self.n_action_to_predict // self.per_token_preds
-        gt_forcing = self.config.test_gt_forcing == 'allframe' and not (
-            actions == self.config.ignore_value).any().item() and not (
-            states == self.config.ignore_value).any().item()
         for i in range(self.n_token_predict + 1):
             outputs = self.forward(**model_inputs)
             model_inputs['past_key_values'] = outputs.past_key_values
@@ -811,10 +801,9 @@ class DVGFormerModel(PreTrainedModel):
                     action_preds[:, :, i] = outputs.action_preds[:, :, 0]
                 else:
                     action_preds = outputs.action_preds
-                # which action to use as condition for the next generation iteration
-                # see for the three modes of config.test_gt_forcing
                 # t=0,1,2,3,4
                 if i < pred_steps:
+                    # which action to use as condition for the next generation iteration
                     if gt_forcing:
                         executed_actions = actions
                     else:
@@ -829,11 +818,7 @@ class DVGFormerModel(PreTrainedModel):
                             executed_states, executed_actions)[0][:, :, i + ii]
                 # t=1,2,3,4
                 if i + 1 < pred_steps:
-                    if gt_forcing:
-                        executed_states[:, :, i + 1] = states[:, :, i + 1]
-                    else:
-                        executed_states[:, :, i + 1] = \
-                            next_states[:, :, i]
+                    executed_states[:, :, i + 1] = next_states[:, :, i]
             # stop
             if outputs.stop_preds is not None:
                 stop_preds = outputs.stop_preds
@@ -920,7 +905,8 @@ def main():
                             num_workers=0)
 
     device = 'cuda'
-    model = DVGFormerModel.from_pretrained('yunzhong-hou/DVGFormer').to(device).to(torch.bfloat16)
+    model = DVGFormerModel.from_pretrained(
+        'yunzhong-hou/DVGFormer').to(device).to(torch.bfloat16)
     model.eval()
 
     def count_parameters(model):
