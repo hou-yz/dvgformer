@@ -130,15 +130,12 @@ def main():
     from src.blender.blender_camera_env import R_colmap_from_blender, R_blender_cam_dir
     from src.utils.quaternion_operations import convert_to_global_frame, convert_to_local_frame, interpolate_eulers, interpolate_tvecs
     # Example usage
-    fpath = 'logs/fpv-3fps-150frames-l12h6-n1bofSimg45boa1s0aID1-motionL-depth2d-lossa1-FC-pale-time/videos/fpv_himeji_return10.00_crashNone_2024-11-11_14-47-06_config.txt'
-    # fpath = 'logs/fpv-3fps-30frames-l12h6-n1img8boa1s0aIS0-motionL-depth2d-lossa1-FTC-cool-goat/videos/fpv_himeji_return10.00_crashNone_2024-11-11_14-57-55_config.txt'
-
-    # fpath = 'logs/fpv-3fps-150frames-l12h6-n1bofSimg45boa1s0aID1-motionL-depth2d-lossa1-FC-caramelized-paddle/videos_20/london_return1_crashNone_2024-10-27_19-33-40_config.txt'
-    fpath = 'logs/fpv-3fps-150frames-l12h6-n1bofSimg45boa1s0aID1-motionL-depth2d-lossa1-FC-caramelized-paddle/videos_10/london_return1_crashNone_2024-10-27_22-05-08_config.txt'
+    # fpath = 'None/videos/fpv_rome_return10.00_crashNone_501_2025-01-25_15-45-46_config.txt'
+    fpath = 'None/videos/debug_None_2025-01-26_01-13-14_config.txt'
 
     # blender coordinates
     loc_rot = np.loadtxt(fpath)
-    loc_rot = loc_rot[::2]
+    loc_rot = loc_rot[::3]
     locations = loc_rot[:, :3]
     directions = loc_rot[:, 3:]
     # tvec and qvec from blender
@@ -156,29 +153,34 @@ def main():
 
     # Load the mesh or point cloud
     mesh = o3d.io.read_triangle_mesh(
-        '/home/houyz/Data/blosm/london/scene.ply')
+        '/home/houyz/Data/blosm/himeji/scene.ply')
     # Create a point cloud from the vertices of the mesh
     point_cloud = o3d.geometry.PointCloud()
     point_cloud.points = mesh.vertices
 
-    # Check if the mesh has vertex colors and textures
-    if mesh.has_vertex_colors():
-        print("Mesh has vertex colors.")
-    else:
-        print("Mesh does not have vertex colors.")
-
-    if mesh.has_textures():
-        print("Mesh has textures.")
-    else:
-        print("Mesh does not have textures.")
+    # Downsample with a voxel size of (for example) 0.02
+    voxel_size = 2.0
+    downsampled_pcd = point_cloud.voxel_down_sample(voxel_size=voxel_size)
+    # add color to the downsampled point cloud according to their z value
+    z = np.asarray(downsampled_pcd.points)[:, 2]
+    z = (z - z.min()) / (z.max() - z.min())
+    downsampled_pcd.colors = o3d.utility.Vector3dVector(
+        # plt.cm.viridis(z)[:, :3]
+        plt.cm.rainbow(z)[:, :3]
+    )
 
     # visualize(tvecs, qvecs)
     geometries = []
     # geometries.extend(visualize_points(points3D))
     geometries.extend(visualize_cameras(tvecs, qvecs, 2))
+    # geometries.extend(visualize_cameras(tvecs[:36], qvecs[:36], 1))
+    # geometries.extend(visualize_cameras(tvecs[36:], qvecs[36:], 2))
     # geometries.extend(plot_camera_lines(tvecs))
     geometries.extend(plot_camera_cylinders(tvecs, radius=0.1))
-    geometries.extend([point_cloud])
+    # geometries.extend(plot_camera_cylinders(
+    #     tvecs[:36], radius=0.1, color=[0.6, 0.6, 0.6]))
+    # geometries.extend(plot_camera_cylinders(tvecs[36:], radius=0.1))
+    geometries.extend([downsampled_pcd])
 
     # Visualization
     vis = o3d.visualization.Visualizer()
@@ -214,10 +216,9 @@ def main():
     # x: right, y: forward, z: up
     camera_params = {
         # Points in the direction the camera is looking
-        # "front": np.array([-1., -0.5, 0.5]),
-        "front": np.array([1, 0, 0.5]),
+        "front": np.array([-1., -0.5, 0.5]),
         # The point the camera is looking at
-        "lookat": tvecs[50],
+        "lookat": tvecs[0],
         # The "up" direction in the camera coordinate system
         "up": np.array([0., 0., 1.]),
         "zoom": 0.05                        # Zoom level
@@ -226,6 +227,29 @@ def main():
     view_ctl.set_lookat(camera_params["lookat"])
     view_ctl.set_up(camera_params["up"])
     view_ctl.set_zoom(camera_params["zoom"])
+
+    camera_params = view_ctl.convert_to_pinhole_camera_parameters()
+    # Save camera location and the lookat point
+    R, t = camera_params.extrinsic[:3, :3], camera_params.extrinsic[:3, 3]
+    camera_location = -R.T @ t
+    lookat_point = tvecs[0]
+    # Save the camera parameters
+    np.savetxt("camera_location.txt", camera_location, fmt='%f')
+    np.savetxt("lookat_point.txt", lookat_point, fmt='%f')
+
+    # save the 3d scene as .glb file with all the geometries
+    # merges all points into one cloud
+    combined_pcd = o3d.geometry.PointCloud()
+    for g in geometries:
+        if isinstance(g, o3d.geometry.PointCloud):
+            combined_pcd += g
+    o3d.io.write_point_cloud("combined_pointcloud.ply", combined_pcd)
+    # merges vertices & triangles
+    combined_mesh = o3d.geometry.TriangleMesh()
+    for g in geometries:
+        if isinstance(g, o3d.geometry.TriangleMesh):
+            combined_mesh += g
+    o3d.io.write_triangle_mesh("combined_mesh.ply", combined_mesh)
 
     # Run the visualizer
     vis.run()
