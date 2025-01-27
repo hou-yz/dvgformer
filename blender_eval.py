@@ -99,7 +99,7 @@ def expand_episode(env, config, model, run_name, drone_type=1, seed=None, random
 
         # use batch_pt for expanding actions
         # only include the last frame
-        batch_pt.update({key: value[:, t:] for key, value in batch.items()
+        batch_pt.update({key: value[:, [t]] for key, value in batch.items()
                          if key != 'seq_length' and key != 'attention_mask' and 'past' not in key and key not in seqence_lvl_keys})
         batch_pt['seq_length'] = torch.ones_like(batch['seq_length']) * 1
         batch_pt['time_steps'] = batch_pt['time_steps'] - chunk_offset
