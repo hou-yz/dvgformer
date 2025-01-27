@@ -905,8 +905,7 @@ def main():
                             num_workers=0)
 
     device = 'cuda'
-    model = DVGFormerModel.from_pretrained(
-        'yunzhong-hou/DVGFormer').to(device).to(torch.bfloat16)
+    model = DVGFormerModel(config).to(device)
     model.eval()
 
     def count_parameters(model):
@@ -940,6 +939,8 @@ def main():
         if i == 0:
             break
     print(total_loss / (i + 1))
+    seqence_lvl_keys = ['noise_embed', 'quality', 'drone_type', 'intrinsic']
+
     # return
     partition_length = 2
     if model.max_model_frames == model.max_data_frames:
@@ -994,9 +995,9 @@ def main():
         'future_action_preds': [],
     }
     for t in range(seq_length):
-        batch_pt.update({key: value[:, :t + 1] for key, value in batch.items()
-                         if key != 'seq_length' and key != 'intrinsic' and 'label' not in key
-                         and 'quality' not in key and 'drone_type' not in key and 'noise' not in key})
+        batch_pt.update({key: value[:, [t]] for key, value in batch.items()
+                         if key != 'seq_length' and key != 'past_key_values' and key != 'attention_mask' and key not in seqence_lvl_keys and 'label' not in key})
+        batch_pt['attention_mask'] = batch['attention_mask'][:, :t + 1]
         batch_pt['seq_length'] = torch.ones_like(batch['seq_length']) * (t + 1)
         outputs = model.expand_actions(**batch_pt)
         if t == 0 and batch_pt['drone_type'] is None:
@@ -1018,6 +1019,68 @@ def main():
                      out['stop_preds'][batch['attention_mask'].bool()])))
     print(torch.max((out_gen['future_action_preds'][batch['attention_mask'].bool()] -
                      out['future_action_preds'][batch['attention_mask'].bool()]).norm(dim=-1)))
+
+    import time
+    import copy
+
+    seq_length = model.max_data_frames // model.fps_downsample
+    batch = {
+        'noise_embed': batch['noise_embed'][[0]],
+        'quality': batch['quality'][[0]],
+        'drone_type': batch['drone_type'][[0]],
+        'intrinsic': batch['intrinsic'][[0]],
+        'images': torch.randn([1, seq_length, 3, dataset.resolution[0], dataset.resolution[1]], device=device),
+        'states': torch.randn([1, seq_length, model.n_action_to_predict, model.config.state_dim], device=device),
+        'actions': torch.randn([1, seq_length, model.n_action_to_predict, model.config.action_dim], device=device),
+        'seq_length': torch.ones([1], dtype=torch.long) * seq_length,
+        'time_steps': torch.arange(seq_length, device=device, dtype=torch.long)[None],
+        'attention_mask': torch.ones([1, seq_length], device=device),
+    }
+
+    t0 = time.time()
+    for repeat in range(10):
+        batch_pt = {'noise_embed': batch['noise_embed'],
+                    'quality': batch['quality'],
+                    'drone_type': batch['drone_type'],
+                    'intrinsic': batch['intrinsic'],
+                    }
+
+        chunk_offset = 0
+        chunk_size = model.max_model_frames // model.fps_downsample
+        chunk_step = 1  # chunk_size // 2
+
+        for t in range(seq_length):
+            batch_pt.update({key: value[:, [t]] for key, value in batch.items()
+                            if key != 'seq_length' and key != 'past_key_values' and key != 'attention_mask' and key not in seqence_lvl_keys})
+            batch_pt['attention_mask'] = \
+                batch['attention_mask'][:, chunk_offset:t + 1]
+            batch_pt['seq_length'] = \
+                torch.ones_like(batch['seq_length']) * (t + 1 - chunk_offset)
+            batch_pt['time_steps'] = batch_pt['time_steps'] - chunk_offset
+            with torch.no_grad():
+                outputs = model.expand_actions(**batch_pt)
+            batch_pt['past_key_values'] = outputs.past_key_values
+
+            # determine if need chunking
+            if (t + 1 - chunk_offset) == chunk_size and t + 1 < seq_length:
+                chunk_offset += chunk_step
+                # use batch_pt for getting the past_key_values
+                batch_pt.update({key: value[:, chunk_offset:chunk_offset + (chunk_size - chunk_step)]
+                                 for key, value in batch.items()
+                                 if key != 'seq_length' and key != 'past_key_values' and key not in seqence_lvl_keys})
+                batch_pt['seq_length'] = \
+                    torch.ones_like(batch['seq_length']) * \
+                    (chunk_size - chunk_step)
+                batch_pt['time_steps'] = batch_pt['time_steps'] - chunk_offset
+                batch_pt['past_key_values'] = None
+                with torch.no_grad():
+                    outputs = model(**batch_pt)
+                # only include last chunk_offset frames
+                batch_pt['past_key_values'] = outputs.past_key_values
+
+    t1 = time.time()
+    print(model.config.max_model_frames, t1 - t0)
+
     pass
 
 
