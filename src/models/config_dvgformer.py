@@ -117,12 +117,12 @@ class DVGFormerConfig(PretrainedConfig):
         self.action_downsample = self.original_fps // self.action_fps
         self.n_action_to_predict = self.fps_downsample // self.action_downsample
         self.prediction_option = prediction_option
-        if self.prediction_option == 'iterative':
-            # predict one action in one token, and repeat for n_action_to_predict times
-            self.per_token_preds = 1
-        elif self.prediction_option == 'one-shot':
+        if self.prediction_option == 'one-shot' or n_token_action == 0:
             # predict all actions in one token
             self.per_token_preds = self.n_action_to_predict
+        elif self.prediction_option == 'iterative':
+            # predict one action in one token, and repeat for n_action_to_predict times
+            self.per_token_preds = 1
         else:
             raise ValueError(
                 f'unknown prediction option: {self.prediction_option}')
@@ -174,7 +174,7 @@ class DVGFormerConfig(PretrainedConfig):
         # number of tokens for one frame
         self.n_token_frame = (self.n_token_state + self.n_token_image + self.n_token_boa +
                               self.n_token_action * self.n_action_to_predict // self.per_token_preds)
-        # number of tokens to predict within one frame
+        # number of tokens to predict (number of action tokens) within one frame
         self.n_token_predict = (
             self.n_token_action * self.n_action_to_predict // self.per_token_preds)
 

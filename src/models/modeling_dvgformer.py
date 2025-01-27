@@ -211,7 +211,7 @@ class DVGFormerModel(PreTrainedModel):
         # number of tokens to predict
         self.n_token_predict = config.n_token_predict
 
-        # token_types: 0 for predicting nothing, 1 for next state pred, 2 for action pred, 3 for both state and action pred, 4 for stop pred
+        # token_types: 0 for predicting nothing, 1 for next state pred, 2 for action pred, 3 for both state and action pred
         # within-frame positional embedding
         self.in_frame_pe = nn.Embedding(
             config.n_token_frame, config.hidden_size // 2)
@@ -340,21 +340,28 @@ class DVGFormerModel(PreTrainedModel):
                                self.config.pad_token_value, l)
 
         # state embeddings
-        state_embeds = self.embed_state(_states.to(self.dtype))
-        state_embeds = concated_seq_to_instances(
-            state_embeds, seq_length)
-        state_embeds = padding(state_embeds, self.config.pad_side,
-                               self.config.pad_token_value, l)
+        if self.n_token_state > 0:
+            state_embeds = self.embed_state(_states.to(self.dtype))
+            state_embeds = concated_seq_to_instances(
+                state_embeds, seq_length)
+            state_embeds = padding(state_embeds, self.config.pad_side,
+                                   self.config.pad_token_value, l)
+        else:
+            state_embeds = torch.zeros(
+                [b, l, 0, self.hidden_size], device=device, dtype=self.dtype)
 
         # action embeddings
-        action_embeds = self.embed_action(_actions.to(self.dtype))
-        action_embeds = concated_seq_to_instances(
-            action_embeds, seq_length)
-        action_embeds = padding(action_embeds, self.config.pad_side,
-                                self.config.pad_token_value, l)
+        if self.n_token_action > 0:
+            action_embeds = self.embed_action(_actions.to(self.dtype))
+            action_embeds = concated_seq_to_instances(
+                action_embeds, seq_length)
+            action_embeds = padding(action_embeds, self.config.pad_side,
+                                    self.config.pad_token_value, l)
+        else:
+            action_embeds = torch.zeros(
+                [b, l, 0, self.hidden_size], device=device, dtype=self.dtype)
 
         boa_embeds = self.boa_token_embed.repeat(b, l, 1)
-        pred_steps = self.n_action_to_predict // self.per_token_preds
 
         # attention mask
         stacked_attn_mask = repeat(attention_mask, 'b l -> b (l n)',
@@ -365,26 +372,31 @@ class DVGFormerModel(PreTrainedModel):
             [state_embeds[:, :, :self.n_token_state],
              image_embeds,
              boa_embeds[:, :, None][:, :, :self.n_token_boa],
-             action_embeds],
+             action_embeds[:, :, :self.n_token_predict]],
             dim=2)
         # tokens for t=0, 1, ...
         stacked_embeds = rearrange(stacked_embeds, 'b l n c -> b (l n) c')
         # replace the tokens outside the sequence with padding tokens
         stacked_embeds[~stacked_attn_mask.bool()[:, -l * n:]] = \
             self.pad_token_embed
-        # token_types: 0 for predicting nothing, 1 for next state pred, 2 for action pred, 3 for both state and action pred, 4 for stop pred
-        token_types = torch.cat(
-            [torch.zeros([b, l, self.n_token_state], device=device, dtype=torch.long),
-             torch.zeros([b, l, self.n_token_image], device=device,
-                         dtype=torch.long),
-             torch.ones([b, l, self.n_token_boa], device=self.device,
-                        dtype=torch.long) * 2,  # boa
-             torch.ones([b, l, pred_steps - 1], device=self.device,
-                        dtype=torch.long) * 3,  # action 0~n-2
-             torch.ones([b, l, 1], device=self.device,
-                        dtype=torch.long) * 1  # last action n-1
-             ], dim=2)
-        token_types = rearrange(token_types, 'b l n -> b (l n)')
+        # token_types: 0 for predicting nothing, 1 for next state pred, 2 for action pred, 3 for both state and action pred
+        token_types = [
+            torch.zeros([b, l, self.n_token_state],
+                        device=device, dtype=torch.long),
+            torch.zeros([b, l, self.n_token_image], device=device,
+                        dtype=torch.long),
+            torch.ones([b, l, self.n_token_boa], device=self.device,
+                       dtype=torch.long) * 2,  # boa
+        ]
+        if self.n_token_action > 0:
+            token_types.extend([
+                torch.ones([b, l, self.n_token_predict - 1], device=self.device,
+                           dtype=torch.long) * 3,  # action 0~n-2
+                torch.ones([b, l, 1], device=self.device,
+                           dtype=torch.long) * 1  # last action n-1
+            ])
+        token_types = rearrange(torch.cat(token_types, dim=2),
+                                'b l n -> b (l n)')
 
         # across-frame positional embeddings
         position_ids = repeat(time_steps, 'b l -> b (l n)', n=n)
@@ -411,7 +423,7 @@ class DVGFormerModel(PreTrainedModel):
             within_frame_pos = torch.cat([torch.ones([b, n_token], dtype=torch.long, device=device
                                                      ) * self.config.ignore_value,
                                           within_frame_pos], dim=1)
-            # token_types: 0 for predicting nothing, 1 for next state pred, 2 for action pred, 3 for both state and action pred, 4 for stop pred
+            # token_types: 0 for predicting nothing, 1 for next state pred, 2 for action pred, 3 for both state and action pred
             token_types = torch.cat([torch.zeros([b, n_token], dtype=torch.long, device=device),
                                      token_types], dim=1)
             # attention mask always include the prepended quality and drone type tokens
@@ -592,7 +604,7 @@ class DVGFormerModel(PreTrainedModel):
         # input:    image * n_token_image, (state, action) * n_action_to_predict
         # predict:  (action, next_state) * n_action_to_predict, stop
 
-        # token_types: 0 for predicting nothing, 1 for next state pred, 2 for action pred, 3 for both state and action pred, 4 for stop pred
+        # token_types: 0 for predicting nothing, 1 for next state pred, 2 for action pred, 3 for both state and action pred
         # predict next state
         pred_next_state_pos = (token_types == 1) | (token_types == 3)
         if pred_next_state_pos.any():
@@ -791,7 +803,6 @@ class DVGFormerModel(PreTrainedModel):
         # t=1,2,3,...
         next_states = torch.zeros([b, 1, self.n_action_to_predict, self.config.state_dim],
                                   device=device, dtype=self.dtype)
-        pred_steps = self.n_action_to_predict // self.per_token_preds
         for i in range(self.n_token_predict + 1):
             outputs = self.forward(**model_inputs)
             model_inputs['past_key_values'] = outputs.past_key_values
@@ -802,7 +813,7 @@ class DVGFormerModel(PreTrainedModel):
                 else:
                     action_preds = outputs.action_preds
                 # t=0,1,2,3,4
-                if i < pred_steps:
+                if i < self.n_token_predict or self.n_token_action == 0:
                     # which action to use as condition for the next generation iteration
                     if gt_forcing:
                         executed_actions = actions
@@ -817,7 +828,7 @@ class DVGFormerModel(PreTrainedModel):
                         next_states[:, :, i + ii] = self._reverse_states_actions(
                             executed_states, executed_actions)[0][:, :, i + ii]
                 # t=1,2,3,4
-                if i + 1 < pred_steps:
+                if i + 1 < self.n_token_predict or self.n_token_action == 0:
                     executed_states[:, :, i + 1] = next_states[:, :, i]
             # stop
             if outputs.stop_preds is not None:
@@ -826,7 +837,7 @@ class DVGFormerModel(PreTrainedModel):
             if outputs.future_action_preds is not None:
                 future_action_preds = outputs.future_action_preds
             # next token
-            if self.n_token_action == 1 and i < pred_steps:
+            if self.n_token_action == 1 and i < self.n_token_predict:
                 next_embeds = self.embed_action(
                     executed_actions.to(self.dtype)[:, -1, [i]])
             if i == self.n_token_predict:
@@ -875,16 +886,9 @@ def main():
 
     config = DVGFormerConfig(
         fps=3,
-        # prediction_option='one-shot',
-        # action_option='sparse',
         # max_model_frames=30,
-        motion_option='local',
-        # image_featmap_shape=(4, 7),
-        n_token_noise=1,
-        n_token_quality=0,
-        n_token_state=1,
-        n_token_action=1,
-        # vision_backbone='dinov2_vits14_reg',
+        # n_token_state=0,
+        # n_token_action=0,
         # attn_implementation='flash_attention_2'
     )
     # return
@@ -938,50 +942,52 @@ def main():
         total_loss += out.loss
         if i == 0:
             break
-    print(total_loss / (i + 1))
+    print('loss: ', total_loss / (i + 1))
     seqence_lvl_keys = ['noise_embed', 'quality', 'drone_type', 'intrinsic']
 
     # return
     partition_length = 2
-    if model.max_model_frames == model.max_data_frames:
-        batch_pt0 = {key: value[:, :partition_length] if len(value.shape) > 1 else value for key, value in batch.items()
-                     if key != 'seq_length' and key != 'intrinsic' and key != 'attention_mask' and 'label' not in key
-                     and 'quality' not in key and 'drone_type' not in key and 'noise' not in key}
-        batch_pt0['attention_mask'] = batch['attention_mask'][:,
-                                                              :partition_length]
-        batch_pt0['seq_length'] = torch.ones_like(
-            batch['seq_length']) * partition_length
-        batch_pt0['intrinsic'] = batch['intrinsic']
-        batch_pt0['quality'] = batch['quality']
-        batch_pt0['drone_type'] = batch['drone_type']
-        batch_pt0['noise_embed'] = batch['noise_embed']
-        T.ToPILImage()(make_grid(rearrange(batch_pt0['images'],
-                                           'b l c h w -> (b l) c h w'), normalize=True)
-                       ).save('frames.jpg')
-        batch_pt1 = {key: value[:, partition_length:] for key, value in batch.items()
-                     if key != 'seq_length' and key != 'intrinsic' and key != 'attention_mask' and 'label' not in key
-                     and 'quality' not in key and 'drone_type' not in key and 'noise' not in key}
-        batch_pt1['attention_mask'] = batch['attention_mask']
-        batch_pt1['seq_length'] = (
-            batch['seq_length'] - batch_pt0['seq_length']).clip(0)
-        batch_pt1['intrinsic'] = batch['intrinsic']
-        T.ToPILImage()(make_grid(rearrange(batch_pt1['images'],
-                                           'b l c h w -> (b l) c h w'), normalize=True)
-                       ).save('frames.jpg')
+    batch_pt0 = {key: value[:, :partition_length] if len(value.shape) > 1 else value for key, value in batch.items()
+                 if key != 'seq_length' and key != 'intrinsic' and key != 'attention_mask' and 'label' not in key
+                 and 'quality' not in key and 'drone_type' not in key and 'noise' not in key}
+    batch_pt0['attention_mask'] = batch['attention_mask'][:,
+                                                          :partition_length]
+    batch_pt0['seq_length'] = torch.ones_like(
+        batch['seq_length']) * partition_length
+    batch_pt0['intrinsic'] = batch['intrinsic']
+    batch_pt0['quality'] = batch['quality']
+    batch_pt0['drone_type'] = batch['drone_type']
+    batch_pt0['noise_embed'] = batch['noise_embed']
+    T.ToPILImage()(make_grid(rearrange(batch_pt0['images'],
+                                       'b l c h w -> (b l) c h w'), normalize=True)
+                   ).save('frames.jpg')
+    batch_pt1 = {key: value[:, partition_length:] for key, value in batch.items()
+                 if key != 'seq_length' and key != 'intrinsic' and key != 'attention_mask' and 'label' not in key
+                 and 'quality' not in key and 'drone_type' not in key and 'noise' not in key}
+    batch_pt1['attention_mask'] = batch['attention_mask']
+    batch_pt1['seq_length'] = (
+        batch['seq_length'] - batch_pt0['seq_length']).clip(0)
+    batch_pt1['intrinsic'] = batch['intrinsic']
+    T.ToPILImage()(make_grid(rearrange(batch_pt1['images'],
+                                       'b l c h w -> (b l) c h w'), normalize=True)
+                   ).save('frames.jpg')
 
-        out = model(**batch)
-        # settings for auto-regressive generation
-        model_kwargs = {'output_attentions': False,
-                        'output_hidden_states': True,
-                        'use_cache': True}
-        out_pt0 = model(**batch_pt0, **model_kwargs)
-        out_pt1 = model(**batch_pt1,
-                        past_key_values=out_pt0.past_key_values,
-                        **model_kwargs)
-        print(torch.max((out_pt0.action_preds -
-                        out.action_preds[:, :partition_length]).norm(dim=-1)))
-        print(torch.max((out_pt1.action_preds -
-                        out.action_preds[:, partition_length:]).norm(dim=-1)))
+    out = model(**batch)
+    # settings for auto-regressive generation
+    model_kwargs = {'output_attentions': False,
+                    'output_hidden_states': True,
+                    'use_cache': True}
+    out_pt0 = model(**batch_pt0, **model_kwargs)
+    out_pt1 = model(**batch_pt1,
+                    past_key_values=out_pt0.past_key_values,
+                    **model_kwargs)
+    print('two part difference 0: ',
+          torch.max((out_pt0.action_preds -
+                     out.action_preds[:, :partition_length]).norm(dim=-1)).item())
+    print('two part difference 1: ',
+          torch.max((out_pt1.action_preds -
+                     out.action_preds[:, partition_length:]).norm(dim=-1)).item())
+
     seq_length = max(batch['seq_length'])
     batch_pt = {'noise_embed': batch['noise_embed'],
                 'quality': batch['quality'],
@@ -999,7 +1005,7 @@ def main():
                          if key != 'seq_length' and key != 'past_key_values' and key != 'attention_mask' and key not in seqence_lvl_keys and 'label' not in key})
         batch_pt['attention_mask'] = batch['attention_mask'][:, :t + 1]
         batch_pt['seq_length'] = torch.ones_like(batch['seq_length']) * (t + 1)
-        outputs = model.expand_actions(**batch_pt)
+        outputs = model.expand_actions(**batch_pt, gt_forcing=True)
         if t == 0 and batch_pt['drone_type'] is None:
             batch_pt['drone_type'] = (outputs.drone_type_preds > 0).long()
         batch_pt['past_key_values'] = outputs.past_key_values
@@ -1013,12 +1019,12 @@ def main():
             out_gen[key] = torch.cat(out_gen[key], dim=1)
         else:
             pass
-    print(torch.max((out_gen['action_preds'][batch['attention_mask'].bool()] -
-                     out['action_preds'][batch['attention_mask'].bool()]).norm(dim=-1)))
-    print(torch.max((out_gen['stop_preds'][batch['attention_mask'].bool()] -
-                     out['stop_preds'][batch['attention_mask'].bool()])))
-    print(torch.max((out_gen['future_action_preds'][batch['attention_mask'].bool()] -
-                     out['future_action_preds'][batch['attention_mask'].bool()]).norm(dim=-1)))
+    print('iterative difference action: ',
+          torch.max((out_gen['action_preds'][batch['attention_mask'].bool()] -
+                     out['action_preds'][batch['attention_mask'].bool()]).norm(dim=-1)).item())
+    print('iterative difference stop: ',
+          torch.max((out_gen['stop_preds'][batch['attention_mask'].bool()] -
+                     out['stop_preds'][batch['attention_mask'].bool()])).item())
 
     import time
     import copy
@@ -1079,7 +1085,7 @@ def main():
                 batch_pt['past_key_values'] = outputs.past_key_values
 
     t1 = time.time()
-    print(model.config.max_model_frames, t1 - t0)
+    print('inference speed', model.config.max_model_frames, t1 - t0)
 
     pass
 
